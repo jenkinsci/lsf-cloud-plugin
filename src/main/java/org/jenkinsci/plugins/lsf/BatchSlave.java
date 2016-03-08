@@ -60,7 +60,7 @@ public class BatchSlave extends Slave {
                 label,
                 new SSHLauncher(hostName, port, userName, 
                         Secret.toString(password), "", ""),
-                new BatchRetentionStrategy(1),
+                new BatchRetentionStrategy(24 * 60),  // 1 day
                 Collections.<NodeProperty<?>>emptyList());
         LOGGER.log(Level.INFO, "Constructing LSF slave {0}", name);
     }
