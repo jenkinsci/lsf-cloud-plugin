@@ -23,15 +23,21 @@
  */
 package org.jenkinsci.plugins.lsf;
 
+import com.cloudbees.plugins.credentials.common.StandardUsernameCredentials;
+import hudson.plugins.sshslaves.SSHConnector;
+import hudson.plugins.sshslaves.SSHLauncher;
 import hudson.Extension;
 import hudson.model.Computer;
 import hudson.model.Descriptor;
+import hudson.model.ItemGroup;
 import hudson.model.Label;
 import hudson.model.Node;
 import hudson.slaves.Cloud;
 import hudson.slaves.NodeProvisioner;
 import hudson.slaves.NodeProvisioner.PlannedNode;
+import hudson.util.ListBoxModel;
 import hudson.util.Secret;
+import jenkins.model.Jenkins;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -39,6 +45,8 @@ import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.Callable;
 import java.util.logging.Logger;
+import java.util.logging.Level;
+import org.kohsuke.stapler.AncestorInPath;
 import org.kohsuke.stapler.DataBoundConstructor;
 
 /**
@@ -59,11 +67,17 @@ public class BatchCloud extends Cloud {
     // credentials for connecting to the slave computer through ssh 
     private String username;
     private Secret password;
+    private String credentialsId;
+
+    /**
+     * Transient stash of the credentials to use, mostly just for providing floating user object.
+     */
+    private transient StandardUsernameCredentials credentials;
 
     private static final Logger LOGGER = Logger
             .getLogger(BatchCloud.class.getName());
 
-    @DataBoundConstructor
+    @Deprecated
     public BatchCloud(String cloudName, String queueType, String label,
             String hostname, int port, String username, String password) {
         super(cloudName);
@@ -74,6 +88,29 @@ public class BatchCloud extends Cloud {
         this.port = port;
         this.username = username;
         this.password = Secret.fromString(password);
+        this.credentialsId = null;
+        this.credentials = null;
+    }
+    @DataBoundConstructor
+    public BatchCloud(String cloudName, String queueType, String label,
+            String hostname, int port, String username, String password, String credentialsId) {
+        super(cloudName);
+        this.cloudName = cloudName;
+        this.queueType = queueType;
+        this.label = label;
+        this.hostname = hostname;
+        this.port = port;
+        this.username = null;
+        this.password = null;
+        if (credentialsId != null && credentialsId != "") {
+            this.credentialsId = credentialsId;
+            this.credentials = SSHLauncher.lookupSystemCredentials(credentialsId);
+        } else if (username != null && password != null) {
+            LOGGER.log(Level.INFO, "Upgrading username/password to credentials");
+            // SSHLauncher.upgrade is not accessible outside package
+            this.credentials = new SSHLauncher(hostname, port, username, password, "", "").getCredentials();
+            this.credentialsId = credentials.getId();
+        }
     }
 
     /**
@@ -101,8 +138,13 @@ public class BatchCloud extends Cloud {
     private BatchSlave doProvision(int numExecutors) 
             throws Descriptor.FormException, IOException {
         String name = "BatchSystem-" + UUID.randomUUID().toString();
-        return new BatchSlave(name, this.label, numExecutors, hostname, port, 
-                username, password);
+        if (credentials != null) {
+            return new BatchSlave(name, this.label, numExecutors, hostname, port,
+                    credentials);
+        } else {
+            return new BatchSlave(name, this.label, numExecutors, hostname, port,
+                    username, password);
+        }
     }
 
     /**
@@ -164,6 +206,7 @@ public class BatchCloud extends Cloud {
         return username;
     }
 
+    @Deprecated
     public void setUsername(String username) {
         this.username = username;
     }
@@ -172,8 +215,17 @@ public class BatchCloud extends Cloud {
         return Secret.toString(password);
     }
 
+    @Deprecated
     public void setPassword(String password) {
         this.password = Secret.fromString(password);
+    }
+
+    public String getCredentialsId() {
+        return credentialsId;
+    }
+
+    public void setCredentialsId(String credentialsId) {
+        this.credentialsId = credentialsId;
     }
 
     @Override
@@ -187,6 +239,10 @@ public class BatchCloud extends Cloud {
         @Override
         public String getDisplayName() {
             return "LSF Cloud";
+        }
+
+        public ListBoxModel doFillCredentialsIdItems(@AncestorInPath ItemGroup context) {
+            return ((SSHConnector.DescriptorImpl) Jenkins.getInstance().getDescriptorOrDie(SSHConnector.class)).doFillCredentialsIdItems(context);
         }
     }
 }
