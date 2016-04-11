@@ -221,6 +221,10 @@ public class BatchCloud extends Cloud {
     }
 
     public String getCredentialsId() {
+        if (credentialsId == null) {
+            SSHLauncher launcher = new SSHLauncher(getHostname(), getPort(), getUsername(), getPassword(), "", "");
+            return launcher.getCredentials().getId();
+        }
         return credentialsId;
     }
 
