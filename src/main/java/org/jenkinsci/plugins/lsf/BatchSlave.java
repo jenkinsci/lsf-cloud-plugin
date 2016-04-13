@@ -23,10 +23,12 @@
  */
 package org.jenkinsci.plugins.lsf;
 
+import com.cloudbees.plugins.credentials.common.StandardUsernameCredentials;
 import hudson.Extension;
 import hudson.model.Descriptor;
 import hudson.model.Node;
 import hudson.model.Slave;
+import hudson.slaves.ComputerLauncher;
 import hudson.slaves.NodeProperty;
 import java.io.IOException;
 import java.util.Collections;
@@ -45,6 +47,36 @@ public class BatchSlave extends Slave {
     private static final Logger LOGGER = Logger.getLogger(BatchSlave.class
             .getName());
 
+    private BatchSlave(String name,
+                       int numExecutors,
+                       String label,
+                       ComputerLauncher launcher) throws Descriptor.FormException, IOException {
+        super(name,
+                "",
+                "jenkins",
+                numExecutors,
+                Node.Mode.NORMAL,
+                label,
+                launcher,
+                new BatchRetentionStrategy(1),
+                Collections.<NodeProperty<?>>emptyList());
+        LOGGER.log(Level.INFO, "Constructing LSF slave {0}", name);
+   }
+
+    public BatchSlave(String name,
+            String label,
+            int numExecutors,
+            String hostName,
+            int port,
+            StandardUsernameCredentials credentials) throws Descriptor.FormException, IOException {
+        this(name,
+             numExecutors,
+             label,
+                new SSHLauncher(hostName, port, credentials, "",
+                                null, null, null, null, null, null));
+   }
+
+    @Deprecated
     public BatchSlave(String name,
             String label,
             int numExecutors,
@@ -52,17 +84,11 @@ public class BatchSlave extends Slave {
             int port,
             String userName,
             Secret password) throws Descriptor.FormException, IOException {
-        super(name,
-                "",
-                "jenkins",
-                numExecutors,
-                Node.Mode.NORMAL,
-                label,
-                new SSHLauncher(hostName, port, userName, 
-                        Secret.toString(password), "", ""),
-                new BatchRetentionStrategy(1),
-                Collections.<NodeProperty<?>>emptyList());
-        LOGGER.log(Level.INFO, "Constructing LSF slave {0}", name);
+        this(name,
+             numExecutors,
+             label,
+             new SSHLauncher(hostName, port, userName,
+                             Secret.toString(password), "", ""));
     }
 
     /**
@@ -76,6 +102,10 @@ public class BatchSlave extends Slave {
             LOGGER.log(Level.WARNING, "Failed to terminate LSF instance: "
                     + getInstanceId(), e);
         }
+    }
+
+    StandardUsernameCredentials getCredentials() {
+        return ((SSHLauncher) getLauncher()).getCredentials();
     }
 
     @Override
